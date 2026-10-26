@@ -1,19 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlayingCard } from '../../components/PlayingCard';
-import {
-  createInitialState,
-  placeBid,
-  playCard,
-  getLegalMoves,
-  botBid,
-  botPlay,
-  type CallBreakState,
-} from './engine';
+import { createInitialState, placeBid, playCard, getLegalMoves, botBid, botPlay, type CallBreakState } from './engine';
 import { loadProfile, saveProfile, recordMatch } from '../../store/profile';
 import type { Card } from '../../utils/cards';
 
 const PLAYER_NAMES = ['You', 'North', 'East', 'West'];
+
+function CardFan({ count = 10, vertical = false }: { count?: number; vertical?: boolean }) {
+  const n = Math.min(count, 13);
+  return (
+    <div style={{ position: 'relative', width: vertical ? 70 : n * 10 + 30, height: vertical ? n * 6 + 40 : 95, margin: '0 auto' }}>
+      {Array.from({ length: n }).map((_, i) => {
+        const off = i - n / 2;
+        return (
+          <div key={i} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%,-50%) translate(${vertical ? 0 : off * 7}px, ${vertical ? off * 5 : 0}px) rotate(${off * (vertical ? 2.5 : 2)}deg)`, zIndex: i }}>
+            <PlayingCard card={null} faceDown />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function PlayCallBreak() {
   const navigate = useNavigate();
@@ -23,26 +31,16 @@ export function PlayCallBreak() {
   const [showResult, setShowResult] = useState(false);
   const [dealing, setDealing] = useState(true);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDealing(false), 1200);
-    return () => clearTimeout(t);
-  }, []);
+  useEffect(() => { const t = setTimeout(() => setDealing(false), 900); return () => clearTimeout(t); }, []);
 
-  // Bot turns
   useEffect(() => {
     if (dealing) return;
     if (state.phase === 'bidding' && state.currentBidder !== 0) {
-      const timer = setTimeout(() => {
-        const bid = botBid(state, state.currentBidder, difficulty);
-        setState(prev => placeBid(prev, state.currentBidder, bid));
-      }, 700);
+      const timer = setTimeout(() => setState(prev => placeBid(prev, state.currentBidder, botBid(state, state.currentBidder, difficulty))), 550);
       return () => clearTimeout(timer);
     }
     if (state.phase === 'playing' && state.currentPlayer !== 0) {
-      const timer = setTimeout(() => {
-        const card = botPlay(state, state.currentPlayer, difficulty);
-        if (card) setState(prev => playCard(prev, state.currentPlayer, card));
-      }, 900);
+      const timer = setTimeout(() => { const c = botPlay(state, state.currentPlayer, difficulty); if (c) setState(prev => playCard(prev, state.currentPlayer, c)); }, 750);
       return () => clearTimeout(timer);
     }
   }, [state.phase, state.currentBidder, state.currentPlayer, state, dealing]);
@@ -51,27 +49,16 @@ export function PlayCallBreak() {
     if (state.phase === 'round-end') {
       setShowResult(true);
       const profile = loadProfile();
-      const playerScore = state.scores[0];
-      const won = playerScore > state.scores[1] && playerScore > state.scores[2] && playerScore > state.scores[3];
-      const updated = recordMatch(profile, {
-        id: Date.now().toString(),
-        game: 'Call Break',
-        result: won ? 'win' : 'loss',
-        date: new Date().toISOString(),
-        score: playerScore,
-      }, won ? 100 : 30);
-      saveProfile(updated);
+      const ps = state.scores[0];
+      const won = ps > state.scores[1] && ps > state.scores[2] && ps > state.scores[3];
+      saveProfile(recordMatch(profile, { id: Date.now().toString(), game: 'Call Break', result: won ? 'win' : 'loss', date: new Date().toISOString(), score: ps }, won ? 100 : 30));
     }
   }, [state.phase]);
 
-  const handleBid = (bid: number) => {
-    setState(prev => placeBid(prev, 0, bid));
-  };
-
+  const handleBid = (bid: number) => setState(prev => placeBid(prev, 0, bid));
   const handlePlay = () => {
     if (!selectedCard) return;
-    const legal = getLegalMoves(state, 0);
-    if (!legal.some(c => c.id === selectedCard.id)) return;
+    if (!getLegalMoves(state, 0).some(c => c.id === selectedCard.id)) return;
     setState(prev => playCard(prev, 0, selectedCard));
     setSelectedCard(null);
   };
@@ -79,154 +66,85 @@ export function PlayCallBreak() {
   const playerHand = state.hands[0];
   const legalMoves = state.phase === 'playing' && state.currentPlayer === 0 ? getLegalMoves(state, 0) : [];
 
-  const seatStyle = (pos: 'top' | 'left' | 'right'): React.CSSProperties => ({
-    position: 'absolute',
-    ...(pos === 'top' && { top: 16, left: '50%', transform: 'translateX(-50%)' }),
-    ...(pos === 'left' && { left: 16, top: '50%', transform: 'translateY(-50%)' }),
-    ...(pos === 'right' && { right: 16, top: '50%', transform: 'translateY(-50%)' }),
-    textAlign: 'center',
-    zIndex: 2,
-  });
-
   return (
-    <div style={{
-      height: '100vh',
-      background: 'radial-gradient(ellipse at center, #0d5c0d 0%, #063006 70%)',
-      color: '#fff',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      position: 'relative',
-    }}>
-      {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.25)', zIndex: 10 }}>
-        <button onClick={() => navigate('/')} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none' }}>← Leave</button>
-        <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Call Break</h2>
-        <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>Round {state.round} • {state.phase}</div>
+    <div style={{ height: '100vh', background: 'radial-gradient(ellipse at center, #1a7a1a 0%, #0a4a0a 65%, #052805 100%)', color: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', background: 'rgba(0,0,0,0.18)', zIndex: 10 }}>
+        <button onClick={() => navigate('/')} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8 }}>← Leave</button>
+        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Call Break</h2>
+        <div style={{ fontSize: '0.8rem', opacity: 0.85 }}>R{state.round} • {state.phase}</div>
       </header>
 
-      {/* Table area */}
       <div style={{ flex: 1, position: 'relative' }}>
-        {/* Opponent seats */}
-        <div style={seatStyle('top')}>
-          <div style={{ fontWeight: 600 }}>{PLAYER_NAMES[1]}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Bid {state.bids[1] ?? '-'} • Tricks {state.tricksWon[1]}</div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
-            <PlayingCard card={null} faceDown />
+        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 2 }}>
+          <CardFan count={state.hands[1]?.length ?? 13} />
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.4)', borderRadius: 8, padding: '3px 10px', display: 'inline-block', fontSize: '0.85rem' }}>
+            <b>{PLAYER_NAMES[1]}</b> • Bid {state.bids[1] ?? '-'} • {state.tricksWon[1]}
           </div>
         </div>
 
-        <div style={seatStyle('left')}>
-          <div style={{ fontWeight: 600 }}>{PLAYER_NAMES[3]}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Bid {state.bids[3] ?? '-'} • {state.tricksWon[3]}</div>
-          <PlayingCard card={null} faceDown />
+        <div style={{ position: 'absolute', left: 8, top: '40%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
+          <CardFan count={state.hands[3]?.length ?? 13} vertical />
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.4)', borderRadius: 8, padding: '3px 8px', fontSize: '0.8rem' }}>
+            <b>{PLAYER_NAMES[3]}</b><br/>Bid {state.bids[3] ?? '-'} • {state.tricksWon[3]}
+          </div>
         </div>
 
-        <div style={seatStyle('right')}>
-          <div style={{ fontWeight: 600 }}>{PLAYER_NAMES[2]}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Bid {state.bids[2] ?? '-'} • {state.tricksWon[2]}</div>
-          <PlayingCard card={null} faceDown />
+        <div style={{ position: 'absolute', right: 8, top: '40%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
+          <CardFan count={state.hands[2]?.length ?? 13} vertical />
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.4)', borderRadius: 8, padding: '3px 8px', fontSize: '0.8rem' }}>
+            <b>{PLAYER_NAMES[2]}</b><br/>Bid {state.bids[2] ?? '-'} • {state.tricksWon[2]}
+          </div>
         </div>
 
-        {/* Center trick */}
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          display: 'flex',
-          gap: '1rem',
-          minHeight: 120,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          {state.currentTrick.length === 0 && !dealing && (
-            <div style={{ opacity: 0.6, fontSize: '1.1rem' }}>Waiting for lead...</div>
-          )}
-          {dealing && <div style={{ opacity: 0.7 }}>Dealing cards...</div>}
-          {state.currentTrick.map((play, i) => (
+        <div style={{ position: 'absolute', top: '46%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {dealing && <div style={{ opacity: 0.65 }}>Dealing...</div>}
+          {!dealing && state.currentTrick.length === 0 && <div style={{ opacity: 0.45 }}>Waiting for lead</div>}
+          {state.currentTrick.map((p, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
-              <PlayingCard card={play.card} />
-              <div style={{ fontSize: '0.75rem', marginTop: 4 }}>{PLAYER_NAMES[play.player]}</div>
+              <PlayingCard card={p.card} />
+              <div style={{ fontSize: '0.65rem', marginTop: 2 }}>{PLAYER_NAMES[p.player]}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Player area fixed at bottom */}
-      <div style={{
-        background: 'linear-gradient(to top, rgba(0,0,0,0.55), transparent)',
-        padding: '1rem 0.5rem 1.25rem',
-        zIndex: 5,
-      }}>
-        {/* Hand */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '0.4rem',
-          flexWrap: 'wrap',
-          marginBottom: '0.75rem',
-          minHeight: 120,
-        }}>
+      <div style={{ paddingBottom: 12, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent)', zIndex: 5 }}>
+        <div style={{ position: 'relative', height: 125, display: 'flex', justifyContent: 'center' }}>
           {playerHand.map((card, idx) => {
             const isLegal = legalMoves.some(c => c.id === card.id);
-            const isSelected = selectedCard?.id === card.id;
+            const sel = selectedCard?.id === card.id;
+            const mid = (playerHand.length - 1) / 2;
+            const off = idx - mid;
             return (
-              <div key={card.id} style={{ transform: `rotate(${(idx - playerHand.length / 2) * 1.5}deg)`, transition: 'transform 0.2s' }}>
-                <PlayingCard
-                  card={card}
-                  selected={isSelected}
-                  onClick={() => isLegal && setSelectedCard(isSelected ? null : card)}
-                  className={!isLegal && state.phase === 'playing' ? 'opacity-40' : ''}
-                />
+              <div key={card.id} style={{ position: 'absolute', left: '50%', bottom: sel ? 16 : 0, transform: `translateX(calc(-50% + ${off * 26}px)) rotate(${off * 2}deg)`, zIndex: sel ? 30 : idx, transition: 'all 0.12s', cursor: isLegal ? 'pointer' : 'default' }} onClick={() => isLegal && setSelectedCard(sel ? null : card)}>
+                <PlayingCard card={card} selected={sel} className={!isLegal && state.phase === 'playing' ? 'opacity-40' : ''} />
               </div>
             );
           })}
         </div>
 
-        {/* Actions */}
-        <div style={{ textAlign: 'center', minHeight: 60 }}>
+        <div style={{ textAlign: 'center', minHeight: 48, marginTop: 4 }}>
           {state.phase === 'bidding' && state.currentBidder === 0 && (
-            <>
-              <div style={{ marginBottom: 8, fontWeight: 600 }}>Your bid</div>
-              <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => (
-                  <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 40 }}>{b}</button>
-                ))}
+            <div>
+              <div style={{ marginBottom: 4, fontWeight: 600, fontSize: '0.9rem' }}>Your bid</div>
+              <div style={{ display: 'flex', gap: 5, justifyContent: 'center', flexWrap: 'wrap' }}>
+                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 32, padding: '0.35rem 0.5rem' }}>{b}</button>)}
               </div>
-            </>
+            </div>
           )}
-          {state.phase === 'playing' && state.currentPlayer === 0 && (
-            <button onClick={handlePlay} disabled={!selectedCard} className="primary" style={{ fontSize: '1.05rem', padding: '0.75rem 2rem' }}>
-              Play Card
-            </button>
-          )}
-          {state.phase === 'playing' && state.currentPlayer !== 0 && (
-            <div style={{ opacity: 0.7 }}>{PLAYER_NAMES[state.currentPlayer]} is playing...</div>
-          )}
+          {state.phase === 'playing' && state.currentPlayer === 0 && <button onClick={handlePlay} disabled={!selectedCard} className="primary">Play Card</button>}
+          {state.phase === 'playing' && state.currentPlayer !== 0 && <div style={{ opacity: 0.65, fontSize: '0.9rem' }}>{PLAYER_NAMES[state.currentPlayer]} playing...</div>}
         </div>
-
-        {/* Your score strip */}
-        <div style={{ textAlign: 'center', marginTop: 8, fontSize: '0.9rem', opacity: 0.9 }}>
-          You • Bid {state.bids[0] ?? '-'} • Tricks {state.tricksWon[0]} • Score {state.scores[0].toFixed(1)}
-        </div>
+        <div style={{ textAlign: 'center', fontSize: '0.8rem', opacity: 0.85, marginTop: 2 }}>You • Bid {state.bids[0] ?? '-'} • Tricks {state.tricksWon[0]} • Score {state.scores[0].toFixed(1)}</div>
       </div>
 
       {showResult && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', zIndex: 200,
-        }}>
-          <div className="card" style={{ maxWidth: 400, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div className="card" style={{ maxWidth: 360, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
             <h2>Round Complete</h2>
-            <p>Your score this round: {state.scores[0].toFixed(1)}</p>
-            <button onClick={() => {
-              setState(createInitialState());
-              setShowResult(false);
-              setDealing(true);
-              setTimeout(() => setDealing(false), 1200);
-            }} className="primary">Play Again</button>
-            <button onClick={() => navigate('/')} style={{ marginLeft: '1rem', background: 'rgba(255,255,255,0.1)', color: '#fff' }}>Home</button>
+            <p>Score: {state.scores[0].toFixed(1)}</p>
+            <button onClick={() => { setState(createInitialState()); setShowResult(false); setDealing(true); setTimeout(() => setDealing(false), 900); }} className="primary">Play Again</button>
+            <button onClick={() => navigate('/')} style={{ marginLeft: 10, background: 'rgba(255,255,255,0.1)', color: '#fff' }}>Home</button>
           </div>
         </div>
       )}
