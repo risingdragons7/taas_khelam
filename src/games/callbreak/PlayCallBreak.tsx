@@ -10,11 +10,11 @@ const PLAYER_NAMES = ['You', 'North', 'East', 'West'];
 function CardFan({ count = 10, vertical = false }: { count?: number; vertical?: boolean }) {
   const n = Math.min(count, 13);
   return (
-    <div style={{ position: 'relative', width: vertical ? 70 : n * 10 + 30, height: vertical ? n * 6 + 40 : 95, margin: '0 auto' }}>
+    <div style={{ position: 'relative', width: vertical ? 90 : n * 14 + 40, height: vertical ? n * 8 + 50 : 120, margin: '0 auto' }}>
       {Array.from({ length: n }).map((_, i) => {
         const off = i - n / 2;
         return (
-          <div key={i} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%,-50%) translate(${vertical ? 0 : off * 7}px, ${vertical ? off * 5 : 0}px) rotate(${off * (vertical ? 2.5 : 2)}deg)`, zIndex: i }}>
+          <div key={i} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%,-50%) translate(${vertical ? 0 : off * 10}px, ${vertical ? off * 7 : 0}px) rotate(${off * (vertical ? 2 : 1.6)}deg)`, zIndex: i }}>
             <PlayingCard card={null} faceDown />
           </div>
         );
@@ -96,46 +96,46 @@ export function PlayCallBreak() {
           </div>
         </div>
 
-        <div style={{ position: 'absolute', top: '46%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ position: 'absolute', top: '46%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
           {dealing && <div style={{ opacity: 0.65 }}>Dealing...</div>}
           {!dealing && state.currentTrick.length === 0 && <div style={{ opacity: 0.45 }}>Waiting for lead</div>}
           {state.currentTrick.map((p, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
               <PlayingCard card={p.card} />
-              <div style={{ fontSize: '0.65rem', marginTop: 2 }}>{PLAYER_NAMES[p.player]}</div>
+              <div style={{ fontSize: '0.7rem', marginTop: 2 }}>{PLAYER_NAMES[p.player]}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ paddingBottom: 12, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent)', zIndex: 5 }}>
-        <div style={{ position: 'relative', height: 125, display: 'flex', justifyContent: 'center' }}>
+      <div style={{ paddingBottom: 16, background: 'linear-gradient(to top, rgba(0,0,0,0.45), transparent)', zIndex: 5 }}>
+        <div style={{ position: 'relative', height: 175, display: 'flex', justifyContent: 'center' }}>
           {playerHand.map((card, idx) => {
             const isLegal = legalMoves.some(c => c.id === card.id);
             const sel = selectedCard?.id === card.id;
             const mid = (playerHand.length - 1) / 2;
             const off = idx - mid;
             return (
-              <div key={card.id} style={{ position: 'absolute', left: '50%', bottom: sel ? 16 : 0, transform: `translateX(calc(-50% + ${off * 26}px)) rotate(${off * 2}deg)`, zIndex: sel ? 30 : idx, transition: 'all 0.12s', cursor: isLegal ? 'pointer' : 'default' }} onClick={() => isLegal && setSelectedCard(sel ? null : card)}>
+              <div key={card.id} style={{ position: 'absolute', left: '50%', bottom: sel ? 22 : 0, transform: `translateX(calc(-50% + ${off * 38}px)) rotate(${off * 1.6}deg)`, zIndex: sel ? 30 : idx, transition: 'all 0.12s', cursor: isLegal ? 'pointer' : 'default' }} onClick={() => isLegal && setSelectedCard(sel ? null : card)}>
                 <PlayingCard card={card} selected={sel} className={!isLegal && state.phase === 'playing' ? 'opacity-40' : ''} />
               </div>
             );
           })}
         </div>
 
-        <div style={{ textAlign: 'center', minHeight: 48, marginTop: 4 }}>
+        <div style={{ textAlign: 'center', minHeight: 52, marginTop: 6 }}>
           {state.phase === 'bidding' && state.currentBidder === 0 && (
             <div>
-              <div style={{ marginBottom: 4, fontWeight: 600, fontSize: '0.9rem' }}>Your bid</div>
-              <div style={{ display: 'flex', gap: 5, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 32, padding: '0.35rem 0.5rem' }}>{b}</button>)}
+              <div style={{ marginBottom: 6, fontWeight: 600 }}>Your bid</div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 36, padding: '0.4rem 0.55rem' }}>{b}</button>)}
               </div>
             </div>
           )}
           {state.phase === 'playing' && state.currentPlayer === 0 && <button onClick={handlePlay} disabled={!selectedCard} className="primary">Play Card</button>}
-          {state.phase === 'playing' && state.currentPlayer !== 0 && <div style={{ opacity: 0.65, fontSize: '0.9rem' }}>{PLAYER_NAMES[state.currentPlayer]} playing...</div>}
+          {state.phase === 'playing' && state.currentPlayer !== 0 && <div style={{ opacity: 0.65 }}>{PLAYER_NAMES[state.currentPlayer]} playing...</div>}
         </div>
-        <div style={{ textAlign: 'center', fontSize: '0.8rem', opacity: 0.85, marginTop: 2 }}>You • Bid {state.bids[0] ?? '-'} • Tricks {state.tricksWon[0]} • Score {state.scores[0].toFixed(1)}</div>
+        <div style={{ textAlign: 'center', fontSize: '0.85rem', opacity: 0.85, marginTop: 4 }}>You • Bid {state.bids[0] ?? '-'} • Tricks {state.tricksWon[0]} • Score {state.scores[0].toFixed(1)}</div>
       </div>
 
       {showResult && (
