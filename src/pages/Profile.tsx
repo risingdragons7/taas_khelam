@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { loadProfile, saveProfile, updateUsername } from '../store/profile';
+import { loadProfile, updateUsername } from '../store/profile';
 
 export function Profile() {
   const [profile, setProfile] = useState(loadProfile);
