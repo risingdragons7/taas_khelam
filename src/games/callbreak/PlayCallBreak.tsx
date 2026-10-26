@@ -63,6 +63,18 @@ export function PlayCallBreak() {
   useEffect(() => {
     const mode = localStorage.getItem(PLAY_MODE_KEY);
     if (mode === 'click' || mode === 'dblclick' || mode === 'drag') setPlayMode(mode);
+
+    // Show confirm if restoring a mid-game
+    const saved = localStorage.getItem(GAME_STATE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.phase && parsed.phase !== 'round-end' && parsed.phase !== 'game-end') {
+          setShowRefreshConfirm(true);
+          setDealing(false);
+        }
+      } catch {}
+    }
   }, []);
 
   useEffect(() => {
@@ -70,15 +82,16 @@ export function PlayCallBreak() {
   }, [state]);
 
   useEffect(() => {
+    if (showRefreshConfirm) return;
     const t = setTimeout(() => {
       setDealing(false);
       playSound('deal');
     }, 1800);
     return () => clearTimeout(t);
-  }, []);
+  }, [showRefreshConfirm]);
 
   useEffect(() => {
-    if (dealing) return;
+    if (dealing || showRefreshConfirm) return;
     if (state.phase === 'bidding' && state.currentBidder !== 0) {
       const timer = setTimeout(() => {
         const bid = botBid(state, state.currentBidder, difficulty);
@@ -97,7 +110,7 @@ export function PlayCallBreak() {
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [state.phase, state.currentBidder, state.currentPlayer, state, dealing]);
+  }, [state.phase, state.currentBidder, state.currentPlayer, state, dealing, showRefreshConfirm]);
 
   useEffect(() => {
     if (state.phase === 'round-end') {
@@ -165,6 +178,11 @@ export function PlayCallBreak() {
     setTimeout(() => setDealing(false), 1800);
   };
 
+  const continueGame = () => {
+    setShowRefreshConfirm(false);
+    setDealing(false);
+  };
+
   const playerHand = state.hands[0];
   const legalMoves = state.phase === 'playing' && state.currentPlayer === 0 ? getLegalMoves(state, 0) : [];
 
@@ -214,8 +232,8 @@ export function PlayCallBreak() {
         </div>
 
         <div style={{ position: 'absolute', top: '44%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1.5rem', alignItems: 'center', minHeight: 160 }}>
-          {dealing && <div style={{ opacity: 0.7, fontSize: '1.2rem' }}>Dealing cards from all sides...</div>}
-          {!dealing && state.currentTrick.length === 0 && <div style={{ opacity: 0.45 }}>Waiting for lead</div>}
+          {dealing && !showRefreshConfirm && <div style={{ opacity: 0.7, fontSize: '1.2rem' }}>Dealing cards from all sides...</div>}
+          {!dealing && state.currentTrick.length === 0 && !showRefreshConfirm && <div style={{ opacity: 0.45 }}>Waiting for lead</div>}
           {state.currentTrick.map((p, i) => (
             <div key={i} style={{ textAlign: 'center' }}>
               <PlayingCard card={p.card} />
@@ -248,7 +266,7 @@ export function PlayCallBreak() {
         </div>
 
         <div style={{ textAlign: 'center', minHeight: 50, marginTop: 4 }}>
-          {state.phase === 'bidding' && state.currentBidder === 0 && (
+          {state.phase === 'bidding' && state.currentBidder === 0 && !showRefreshConfirm && (
             <div>
               <div style={{ marginBottom: 4, fontWeight: 600, fontSize: '0.9rem' }}>Your bid</div>
               <div style={{ display: 'flex', gap: 5, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -256,12 +274,12 @@ export function PlayCallBreak() {
               </div>
             </div>
           )}
-          {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'click' && (
+          {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'click' && !showRefreshConfirm && (
             <button onClick={() => selectedCard && doPlay(selectedCard)} disabled={!selectedCard} className="primary">Play Card</button>
           )}
           {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'dblclick' && <div style={{ opacity: 0.7 }}>Double-click a card to play</div>}
           {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'drag' && <div style={{ opacity: 0.7 }}>Drag a card to the center</div>}
-          {state.phase === 'playing' && state.currentPlayer !== 0 && <div style={{ opacity: 0.65 }}>{MASCOTS[state.currentPlayer]} {PLAYER_NAMES[state.currentPlayer]} playing...</div>}
+          {state.phase === 'playing' && state.currentPlayer !== 0 && !showRefreshConfirm && <div style={{ opacity: 0.65 }}>{MASCOTS[state.currentPlayer]} {PLAYER_NAMES[state.currentPlayer]} playing...</div>}
         </div>
       </div>
 
@@ -271,7 +289,7 @@ export function PlayCallBreak() {
             <h2>Round Complete</h2>
             <div style={{ margin: '1rem 0' }}>
               {PLAYER_NAMES.map((n, i) => (
-                <div key={i}>{MASCOTS[i]} {n}: Bid {state.bids[i]} • Tricks {state.tricksWon[i]} • +{ (state.scores[i] - (state.scores[i] - (state.bids[i] || 0))).toFixed(1) } • Total {state.scores[i].toFixed(1)}</div>
+                <div key={i}>{MASCOTS[i]} {n}: Bid {state.bids[i]} • Tricks {state.tricksWon[i]} • Total {state.scores[i].toFixed(1)}</div>
               ))}
             </div>
             <button onClick={startNewGame} className="primary">Play Again</button>
@@ -283,10 +301,10 @@ export function PlayCallBreak() {
       {showRefreshConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
           <div className="card" style={{ maxWidth: 380, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
-            <h2>Refresh Detected</h2>
+            <h2>Game in Progress</h2>
             <p>Do you want to start a new game?</p>
             <button onClick={startNewGame} className="primary">Yes, New Game</button>
-            <button onClick={() => setShowRefreshConfirm(false)} style={{ marginLeft: 10 }}>Continue This Game</button>
+            <button onClick={continueGame} style={{ marginLeft: 10 }}>Continue This Game</button>
           </div>
         </div>
       )}
