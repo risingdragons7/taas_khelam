@@ -1,10 +1,32 @@
 import { useTheme } from '../design/ThemeProvider';
 import { loadProfile } from '../store/profile';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const PLAY_MODE_KEY = 'cardverse-play-mode';
+const SOUND_KEY = 'cardverse-sounds';
 
 export function Settings() {
   const { colorMode, setColorMode } = useTheme();
   const [profile] = useState(loadProfile);
+  const [playMode, setPlayMode] = useState<'click' | 'dblclick' | 'drag'>('click');
+  const [sounds, setSounds] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(PLAY_MODE_KEY);
+    if (saved === 'click' || saved === 'dblclick' || saved === 'drag') setPlayMode(saved);
+    const s = localStorage.getItem(SOUND_KEY);
+    if (s !== null) setSounds(s === 'true');
+  }, []);
+
+  const handlePlayMode = (mode: 'click' | 'dblclick' | 'drag') => {
+    setPlayMode(mode);
+    localStorage.setItem(PLAY_MODE_KEY, mode);
+  };
+
+  const handleSounds = (on: boolean) => {
+    setSounds(on);
+    localStorage.setItem(SOUND_KEY, String(on));
+  };
 
   const handleReset = () => {
     if (confirm('Reset all local progress? This cannot be undone.')) {
@@ -35,8 +57,23 @@ export function Settings() {
 
       <section className="card" style={{ marginBottom: '1.5rem' }}>
         <h2>Gameplay</h2>
-        <p>Default bot difficulty: Intermediate (configurable in future updates)</p>
-        <p>Animations: Enabled (respects reduced-motion preference)</p>
+        <label style={{ display: 'block', marginBottom: '1rem' }}>
+          How to play a card
+          <select
+            value={playMode}
+            onChange={e => handlePlayMode(e.target.value as any)}
+            style={{ marginLeft: '1rem', padding: '0.5rem', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}
+          >
+            <option value="click">Click to select, button to play</option>
+            <option value="dblclick">Double-click to play</option>
+            <option value="drag">Drag to the center to play</option>
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+          <input type="checkbox" checked={sounds} onChange={e => handleSounds(e.target.checked)} />
+          Sound effects
+        </label>
+        <p>Default bot difficulty: Intermediate</p>
       </section>
 
       <section className="card">
