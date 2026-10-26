@@ -59,7 +59,7 @@ export function PlayCallBreak() {
     return createInitialState();
   });
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-  const [difficulty, setDifficulty] = useState(settings.difficulty);
+  const [difficulty] = useState(settings.difficulty);
   const [showResult, setShowResult] = useState(false);
   const [dealing, setDealing] = useState(true);
   const [playMode, setPlayMode] = useState<'click' | 'dblclick' | 'drag'>('click');
