@@ -27,10 +27,11 @@ export interface MatchRecord {
 }
 
 const STORAGE_KEY = 'cardverse-profile';
+const SETTINGS_KEY = 'cardverse-settings';
 
 const DEFAULT_PROFILE: PlayerProfile = {
   username: 'Player',
-  avatar: 'default',
+  avatar: '👤',
   level: 1,
   xp: 0,
   gold: 1000,
@@ -48,6 +49,18 @@ const DEFAULT_PROFILE: PlayerProfile = {
   matchHistory: [],
 };
 
+export interface GameSettings {
+  winningAmount: number;
+  difficulty: 'beginner' | 'intermediate' | 'expert';
+  roundsToPlay: number;
+}
+
+const DEFAULT_SETTINGS: GameSettings = {
+  winningAmount: 100,
+  difficulty: 'intermediate',
+  roundsToPlay: 5,
+};
+
 export function loadProfile(): PlayerProfile {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -61,6 +74,28 @@ export function loadProfile(): PlayerProfile {
 
 export function saveProfile(profile: PlayerProfile) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+}
+
+export function updateUsername(name: string) {
+  const p = loadProfile();
+  p.username = name.trim() || 'Player';
+  saveProfile(p);
+  return p;
+}
+
+export function loadSettings(): GameSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(s: Partial<GameSettings>) {
+  const current = loadSettings();
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...current, ...s }));
 }
 
 export function addXp(profile: PlayerProfile, amount: number): PlayerProfile {
