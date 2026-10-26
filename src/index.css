@@ -7,9 +7,7 @@
   --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body, #root {
   margin: 0;
@@ -33,10 +31,7 @@ h1, h2, h3, h4 {
   letter-spacing: -0.02em;
 }
 
-a {
-  color: var(--accent);
-  text-decoration: none;
-}
+a { color: var(--accent); text-decoration: none; }
 
 button {
   font-family: inherit;
@@ -87,9 +82,9 @@ button.primary:hover {
 }
 
 .playing-card {
-  width: 78px;
-  height: 112px;
-  border-radius: 10px;
+  width: 108px;
+  height: 154px;
+  border-radius: 12px;
   background: var(--cardBg);
   border: 1px solid #ddd;
   display: flex;
@@ -97,16 +92,16 @@ button.primary:hover {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 1.25rem;
+  font-size: 1.45rem;
   position: relative;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.6);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.6);
   user-select: none;
   transition: var(--transition);
 }
 
 .playing-card:hover {
-  transform: translateY(-6px) scale(1.04);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  transform: translateY(-8px) scale(1.03);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
 }
 
 .playing-card.red { color: #c41e3a; }
@@ -117,17 +112,22 @@ button.primary:hover {
   color: transparent;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .playing-card {
+    width: 72px;
+    height: 104px;
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 600px) {
   .playing-card {
     width: 56px;
     height: 80px;
-    font-size: 1rem;
+    font-size: 0.95rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
+  * { animation: none !important; transition: none !important; }
 }
