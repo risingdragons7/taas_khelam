@@ -1,6 +1,7 @@
 import { useTheme } from '../design/ThemeProvider';
 import { loadProfile, loadSettings, saveSettings, type GameSettings } from '../store/profile';
 import { useState, useEffect } from 'react';
+import { getLanguage, setLanguage, t, type Language } from '../i18n';
 
 const PLAY_MODE_KEY = 'cardverse-play-mode';
 const SOUND_KEY = 'cardverse-sounds';
@@ -11,6 +12,7 @@ export function Settings() {
   const [playMode, setPlayMode] = useState<'click' | 'dblclick' | 'drag'>('click');
   const [sounds, setSounds] = useState(true);
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
+  const [lang, setLang] = useState<Language>(getLanguage);
 
   useEffect(() => {
     const saved = localStorage.getItem(PLAY_MODE_KEY);
@@ -29,6 +31,13 @@ export function Settings() {
     localStorage.setItem(SOUND_KEY, String(on));
   };
 
+  const handleLang = (l: Language) => {
+    setLang(l);
+    setLanguage(l);
+    // Force re-render of game pages if needed; simple reload for now
+    window.location.reload();
+  };
+
   const updateSetting = (partial: Partial<GameSettings>) => {
     const next = { ...settings, ...partial };
     setSettings(next);
@@ -44,7 +53,7 @@ export function Settings() {
 
   return (
     <div>
-      <h1>Settings</h1>
+      <h1>{t('settings')}</h1>
       <section className="card" style={{ marginBottom: '1.5rem' }}>
         <h2>Appearance</h2>
         <label style={{ display: 'block', marginBottom: '1rem' }}>
@@ -57,6 +66,14 @@ export function Settings() {
             <option value="system">System</option>
             <option value="light">Light</option>
             <option value="dark">Dark</option>
+          </select>
+        </label>
+        <label style={{ display: 'block', marginBottom: '1rem' }}>
+          {t('language')}
+          <select value={lang} onChange={e => handleLang(e.target.value as Language)} style={{ marginLeft: '1rem', padding: '0.5rem', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+            <option value="en">English</option>
+            <option value="ne">नेपाली (Nepali)</option>
+            <option value="hi">हिंदी (Hindi)</option>
           </select>
         </label>
         <p style={{ color: 'var(--textMuted)' }}>Themes can be changed in the Themes section.</p>
