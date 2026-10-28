@@ -201,6 +201,27 @@ export function PlayCallBreak() {
     setDragCard(null);
   };
 
+
+  const nextRound = () => {
+    if (state.round >= settings.roundsToPlay) {
+      // Match over
+      setShowResult(false);
+      // Could show final summary, but for now just allow new
+      startNewGame();
+      return;
+    }
+    const newState = createInitialState();
+    setState({
+      ...newState,
+      scores: state.scores,
+      round: state.round + 1,
+      roundHistory: state.roundHistory,
+    });
+    setShowResult(false);
+    setDealing(true);
+    setTimeout(() => setDealing(false), 2200);
+  };
+
   const startNewGame = () => {
     localStorage.removeItem(GAME_STATE_KEY);
     setState(createInitialState());
@@ -419,7 +440,7 @@ export function PlayCallBreak() {
                 </div>
               ))}
             </div>
-            <button onClick={startNewGame} className="primary">Next Round / Play Again</button>
+            <button onClick={nextRound} className="primary">{state.round >= settings.roundsToPlay ? "New Match" : "Next Round"}</button>
             <button onClick={() => navigate('/')} style={{ marginLeft: 10, background: 'rgba(255,255,255,0.1)', color: '#fff' }}>Home</button>
           </div>
         </div>
