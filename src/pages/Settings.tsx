@@ -3,28 +3,19 @@ import { loadProfile, loadSettings, saveSettings, type GameSettings } from '../s
 import { useState, useEffect } from 'react';
 import { getLanguage, setLanguage, t, type Language } from '../i18n';
 
-const PLAY_MODE_KEY = 'cardverse-play-mode';
 const SOUND_KEY = 'cardverse-sounds';
 
 export function Settings() {
   const { colorMode, setColorMode } = useTheme();
   const [profile] = useState(loadProfile);
-  const [playMode, setPlayMode] = useState<'click' | 'dblclick' | 'drag'>('click');
   const [sounds, setSounds] = useState(true);
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [lang, setLang] = useState<Language>(getLanguage);
 
   useEffect(() => {
-    const saved = localStorage.getItem(PLAY_MODE_KEY);
-    if (saved === 'click' || saved === 'dblclick' || saved === 'drag') setPlayMode(saved);
     const s = localStorage.getItem(SOUND_KEY);
     if (s !== null) setSounds(s === 'true');
   }, []);
-
-  const handlePlayMode = (mode: 'click' | 'dblclick' | 'drag') => {
-    setPlayMode(mode);
-    localStorage.setItem(PLAY_MODE_KEY, mode);
-  };
 
   const handleSounds = (on: boolean) => {
     setSounds(on);
@@ -81,14 +72,7 @@ export function Settings() {
 
       <section className="card" style={{ marginBottom: '1.5rem' }}>
         <h2>Gameplay</h2>
-        <label style={{ display: 'block', marginBottom: '1rem' }}>
-          How to play a card
-          <select value={playMode} onChange={e => handlePlayMode(e.target.value as any)} style={{ marginLeft: '1rem', padding: '0.5rem', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
-            <option value="click">Click to select, button to play</option>
-            <option value="dblclick">Double-click to play</option>
-            <option value="drag">Drag to the center to play</option>
-          </select>
-        </label>
+        <p style={{ color: "var(--textMuted)", marginBottom: "1rem" }}>Cards are played by dragging them to the center of the table.</p>
         <label style={{ display: 'block', marginBottom: '1rem' }}>
           Bot difficulty
           <select value={settings.difficulty} onChange={e => updateSetting({ difficulty: e.target.value as any })} style={{ marginLeft: '1rem', padding: '0.5rem', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
