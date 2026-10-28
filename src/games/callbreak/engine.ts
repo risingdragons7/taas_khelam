@@ -3,6 +3,14 @@ import { createDeck, shuffle, rankValue, type Suit } from '../../utils/cards';
 
 export type PlayerId = 0 | 1 | 2 | 3;
 
+export interface RoundResult {
+  round: number;
+  bids: number[];
+  tricksWon: number[];
+  roundScores: number[];
+  cumulative: number[];
+}
+
 export interface CallBreakState {
   hands: Card[][];
   bids: (number | null)[];
@@ -17,6 +25,7 @@ export interface CallBreakState {
   trump: Suit;
   seed: number;
   tricksWon: number[];
+  roundHistory: RoundResult[];
 }
 
 export function createInitialState(seed = Date.now()): CallBreakState {
@@ -25,7 +34,6 @@ export function createInitialState(seed = Date.now()): CallBreakState {
   for (let i = 0; i < 52; i++) {
     hands[i % 4].push(deck[i]);
   }
-  // Sort hands by suit then rank for easier play
   hands.forEach(hand => hand.sort((a, b) => {
     if (a.suit !== b.suit) return a.suit.localeCompare(b.suit);
     return rankValue(b.rank) - rankValue(a.rank);
@@ -45,18 +53,18 @@ export function createInitialState(seed = Date.now()): CallBreakState {
     trump: 'spades',
     seed,
     tricksWon: [0, 0, 0, 0],
+    roundHistory: [],
   };
 }
 
 export function getLegalMoves(state: CallBreakState, player: PlayerId): Card[] {
   if (state.phase !== 'playing') return [];
   const hand = state.hands[player];
-  if (state.currentTrick.length === 0) return hand; // lead anything
-
+  if (state.currentTrick.length === 0) return hand;
   const leadSuit = state.currentTrick[0].card.suit;
   const hasLeadSuit = hand.some(c => c.suit === leadSuit);
   if (hasLeadSuit) return hand.filter(c => c.suit === leadSuit);
-  return hand; // can play anything including trump
+  return hand;
 }
 
 export function placeBid(state: CallBreakState, player: PlayerId, bid: number): CallBreakState {
@@ -92,7 +100,6 @@ export function playCard(state: CallBreakState, player: PlayerId, card: Card): C
     };
   }
 
-  // Complete trick
   const winner = determineTrickWinner(newTrick, state.trump);
   const newTricks = [...state.tricks, { cards: newTrick.map(t => t.card), winner }];
   const newTricksWon = [...state.tricksWon];
@@ -101,16 +108,25 @@ export function playCard(state: CallBreakState, player: PlayerId, card: Card): C
 
   if (allHandsEmpty) {
     const newScores = calculateRoundScores(state.bids as number[], newTricksWon);
+    const cumulative = state.scores.map((s, i) => s + newScores[i]);
+    const result: RoundResult = {
+      round: state.round,
+      bids: state.bids as number[],
+      tricksWon: newTricksWon,
+      roundScores: newScores,
+      cumulative,
+    };
     return {
       ...state,
       hands: newHands,
       currentTrick: [],
       tricks: newTricks,
       tricksWon: newTricksWon,
-      scores: state.scores.map((s, i) => s + newScores[i]),
+      scores: cumulative,
       phase: 'round-end',
       leadPlayer: winner,
       currentPlayer: winner,
+      roundHistory: [...state.roundHistory, result],
     };
   }
 
@@ -150,15 +166,13 @@ function calculateRoundScores(bids: number[], tricksWon: number[]): number[] {
     const won = tricksWon[i];
     if (won === bid) return bid;
     if (won > bid) return bid + (won - bid) * 0.1;
-    return -(bid - won);
+    return -bid; // under: -full bid (user request)
   });
 }
 
-// Bot AI
 export function botBid(state: CallBreakState, player: PlayerId, difficulty: 'beginner' | 'casual' | 'intermediate' | 'expert'): number {
   const hand = state.hands[player];
   let estimate = 0;
-  // Simple: count high cards and trumps
   for (const card of hand) {
     if (card.suit === 'spades') estimate += 0.6;
     if (rankValue(card.rank) >= 12) estimate += 0.5;
@@ -173,7 +187,6 @@ export function botBid(state: CallBreakState, player: PlayerId, difficulty: 'beg
 export function botPlay(state: CallBreakState, player: PlayerId, _difficulty: string): Card | null {
   const legal = getLegalMoves(state, player);
   if (legal.length === 0) return null;
-  // Simple: play lowest if not leading, highest if leading or to win
   if (state.currentTrick.length === 0) {
     return legal.reduce((a, b) => rankValue(a.rank) > rankValue(b.rank) ? a : b);
   }
