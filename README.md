@@ -86,3 +86,14 @@ MIT
 - No online multiplayer (architecture ready for future server-authoritative backend)
 - Other 9 games are menu placeholders
 - Audio and advanced animations pending
+
+## Recent Improvements (v1.1)
+
+- **Multilingual Support**: English, Nepali (नेपाली), and Hindi (हिंदी) toggle in Settings.
+- **Collapsible Scoreboard**: Tap to expand/collapse bidding and tricks tracking.
+- **Mobile Orientation Prompt**: Suggests landscape mode for optimal play on phones.
+- **Auto-Sort Hand**: One-tap button to refresh card order.
+- **Enhanced Reconnection**: Existing localStorage persistence improved with clearer resume flow.
+- Cards remain CSS-rendered for fast loads (<2s target).
+
+Game state continues to cache locally so refreshes or brief disconnects resume progress.
