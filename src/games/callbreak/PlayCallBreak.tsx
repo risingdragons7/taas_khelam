@@ -1,15 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlayingCard } from '../../components/PlayingCard';
 import { createInitialState, placeBid, playCard, getLegalMoves, botBid, botPlay, type CallBreakState } from './engine';
 import { loadProfile, saveProfile, recordMatch, loadSettings, updateUsername } from '../../store/profile';
 import type { Card } from '../../utils/cards';
-import { t, getLanguage } from '../../i18n';
+import { t } from '../../i18n';
 
 const BOT_NAMES = ['Charlie', 'Marie', 'Jim'];
 const BOT_MASCOTS = ['🤖', '👩', '👨'];
 const GAME_STATE_KEY = 'cardverse-callbreak-state';
-const PLAY_MODE_KEY = 'cardverse-play-mode';
 const SOUND_KEY = 'cardverse-sounds';
 
 function playSound(type: 'deal' | 'play' | 'bid' | 'win') {
@@ -31,12 +30,12 @@ function playSound(type: 'deal' | 'play' | 'bid' | 'win') {
 function CardFan({ count = 10, vertical = false }: { count?: number; vertical?: boolean }) {
   const n = Math.min(count, 13);
   return (
-    <div style={{ position: 'relative', width: vertical ? 140 : n * 20 + 60, height: vertical ? n * 12 + 70 : 180, margin: '0 auto' }}>
+    <div style={{ position: 'relative', width: vertical ? 120 : n * 18 + 50, height: vertical ? n * 10 + 60 : 160, margin: '0 auto' }}>
       {Array.from({ length: n }).map((_, i) => {
         const off = i - n / 2;
         return (
-          <div key={i} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%,-50%) translate(${vertical ? 0 : off * 16}px, ${vertical ? off * 12 : 0}px) rotate(${off * (vertical ? 1.6 : 1.2)}deg)`, zIndex: i }}>
-            <PlayingCard card={null} faceDown />
+          <div key={i} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%,-50%) translate(${vertical ? 0 : off * 14}px, ${vertical ? off * 10 : 0}px) rotate(${off * (vertical ? 1.4 : 1)}deg)`, zIndex: i }}>
+            <PlayingCard card={null} faceDown size="sm" />
           </div>
         );
       })}
@@ -59,27 +58,27 @@ export function PlayCallBreak() {
     } catch {}
     return createInitialState();
   });
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-  const [difficulty] = useState(settings.difficulty);
-  const [showResult, setShowResult] = useState(false);
   const [dealing, setDealing] = useState(true);
-  const [playMode, setPlayMode] = useState<'click' | 'dblclick' | 'drag'>('click');
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
-  const [dragging, setDragging] = useState<Card | null>(null);
   const [showMenu, setShowMenu] = useState(false);
-  const [lastTrick, setLastTrick] = useState<{ cards: Card[]; winner: number } | null>(null);
-  const [showLastTrick, setShowLastTrick] = useState(false);
-  const [trickMessage, setTrickMessage] = useState('');
+  const [showResult, setShowResult] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [tempName, setTempName] = useState(playerName);
-  const [scoreboardOpen, setScoreboardOpen] = useState(true);
-  const [isPortrait, setIsPortrait] = useState(false);
+  const [showScoreboard, setShowScoreboard] = useState(false);
+  const [trickMessage, setTrickMessage] = useState('');
+  const [lastTrick, setLastTrick] = useState<{ cards: Card[]; winner: number } | null>(null);
+  const [showLastTrick, setShowLastTrick] = useState(false);
+
+  // Custom drag state
+  const [dragCard, setDragCard] = useState<Card | null>(null);
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const difficulty = settings.difficulty;
 
   useEffect(() => {
-    const mode = localStorage.getItem(PLAY_MODE_KEY);
-    if (mode === 'click' || mode === 'dblclick' || mode === 'drag') setPlayMode(mode);
     if (!profile.username || profile.username === 'Player') setShowProfileSetup(true);
-
     const saved = localStorage.getItem(GAME_STATE_KEY);
     if (saved) {
       try {
@@ -101,7 +100,7 @@ export function PlayCallBreak() {
     const t = setTimeout(() => {
       setDealing(false);
       playSound('deal');
-    }, 1800);
+    }, 2200);
     return () => clearTimeout(t);
   }, [showRefreshConfirm, showProfileSetup]);
 
@@ -159,15 +158,6 @@ export function PlayCallBreak() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [state.phase]);
 
-  useEffect(() => {
-    const check = () => {
-      setIsPortrait(window.innerHeight > window.innerWidth && window.innerWidth < 900);
-    };
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
   const handleBid = (bid: number) => {
     setState(prev => placeBid(prev, 0, bid));
     playSound('bid');
@@ -176,30 +166,39 @@ export function PlayCallBreak() {
   const doPlay = useCallback((card: Card) => {
     if (!getLegalMoves(state, 0).some(c => c.id === card.id)) return;
     setState(prev => playCard(prev, 0, card));
-    setSelectedCard(null);
-    setDragging(null);
+    setDragCard(null);
     playSound('play');
   }, [state]);
 
-  const handleCardClick = (card: Card) => {
-    if (playMode === 'dblclick' || playMode === 'drag') return;
-    const isLegal = getLegalMoves(state, 0).some(c => c.id === card.id);
-    if (!isLegal) return;
-    setSelectedCard(selectedCard?.id === card.id ? null : card);
+  // Pointer-based drag so card leaves its place in real time
+  const onPointerDown = (e: React.PointerEvent, card: Card) => {
+    if (state.phase !== 'playing' || state.currentPlayer !== 0) return;
+    const legal = getLegalMoves(state, 0);
+    if (!legal.some(c => c.id === card.id)) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setDragPos({ x: e.clientX, y: e.clientY });
+    setDragCard(card);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleDoubleClick = (card: Card) => {
-    if (playMode !== 'dblclick') return;
-    doPlay(card);
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragCard) return;
+    setDragPos({ x: e.clientX, y: e.clientY });
   };
 
-  const handleDragStart = (card: Card) => {
-    if (playMode !== 'drag') return;
-    setDragging(card);
-  };
-
-  const handleDrop = () => {
-    if (dragging) doPlay(dragging);
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!dragCard) return;
+    const table = tableRef.current;
+    if (table) {
+      const rect = table.getBoundingClientRect();
+      const inTable = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (inTable) {
+        doPlay(dragCard);
+        return;
+      }
+    }
+    setDragCard(null);
   };
 
   const startNewGame = () => {
@@ -209,7 +208,8 @@ export function PlayCallBreak() {
     setDealing(true);
     setShowRefreshConfirm(false);
     setShowMenu(false);
-    setTimeout(() => setDealing(false), 1800);
+    setShowScoreboard(false);
+    setTimeout(() => setDealing(false), 2200);
   };
 
   const continueGame = () => {
@@ -221,151 +221,204 @@ export function PlayCallBreak() {
     updateUsername(tempName);
     setShowProfileSetup(false);
     setDealing(true);
-    setTimeout(() => setDealing(false), 1800);
+    setTimeout(() => setDealing(false), 2200);
   };
 
-  const playerHand = state.hands[0];
+  const playerHand = state.hands[0].filter(c => dragCard?.id !== c.id);
   const legalMoves = state.phase === 'playing' && state.currentPlayer === 0 ? getLegalMoves(state, 0) : [];
-  const sortedScores = state.scores.map((s, i) => ({ s, i })).sort((a, b) => b.s - a.s);
 
   return (
-    <div style={{ height: '100vh', background: 'radial-gradient(ellipse at center, #1a7a1a 0%, #0a4a0a 65%, #052805 100%)', color: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-      onDragOver={e => e.preventDefault()}
-      onDrop={handleDrop}
+    <div
+      style={{ height: '100vh', background: 'radial-gradient(ellipse at center, #1a7a1a 0%, #0a4a0a 65%, #052805 100%)', color: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1rem', background: 'rgba(0,0,0,0.15)', zIndex: 10 }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1rem', background: 'rgba(0,0,0,0.2)', zIndex: 10 }}>
         <button onClick={() => navigate('/')} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8 }}>← {t('leave')}</button>
-        <h2 style={{ margin: 0, fontSize: '1.2rem' }}>{t('callBreak')}</h2>
+        <h2 style={{ margin: 0, fontSize: '1.15rem' }}>{t('callBreak')}</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setShowScoreboard(true)} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>Scores</button>
           <button onClick={() => setShowMenu(true)} style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '0.3rem 0.7rem' }}>{t('menu')}</button>
-          <div style={{ fontSize: '0.8rem', opacity: 0.85 }}>R{state.round}/{settings.roundsToPlay} • {state.phase}</div>
         </div>
       </header>
 
-      {/* Scoreboard - collapsible */}
-      <div style={{ background: 'rgba(0,0,0,0.25)', fontSize: '0.8rem' }}>
-        <button onClick={() => setScoreboardOpen(o => !o)} style={{ width: '100%', background: 'transparent', color: '#fff', border: 'none', padding: '0.3rem', fontSize: '0.75rem' }}>
-          {t('scoreboard')} {scoreboardOpen ? '▼' : '▶'}
-        </button>
-        {scoreboardOpen && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.8rem', padding: '0.35rem', flexWrap: 'wrap' }}>
-            {PLAYER_NAMES.map((name, i) => (
-              <div key={i} style={{ textAlign: 'center', minWidth: 85, opacity: state.currentPlayer === i || state.currentBidder === i ? 1 : 0.75 }}>
-                <div>{MASCOTS[i]} {name}</div>
-                <div>{t('bid')} {state.bids[i] ?? '-'} • {t('tricks')} {state.tricksWon[i]}</div>
-                <div style={{ fontWeight: 700 }}>{state.scores[i].toFixed(1)}</div>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Compact current round info */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', padding: '0.3rem', background: 'rgba(0,0,0,0.3)', fontSize: '0.75rem' }}>
+        <span>Round {state.round}/{settings.roundsToPlay}</span>
+        <span>Phase: {state.phase}</span>
+        {PLAYER_NAMES.map((n, i) => (
+          <span key={i} style={{ opacity: state.currentPlayer === i || state.currentBidder === i ? 1 : 0.7 }}>
+            {MASCOTS[i]} {n}: {state.bids[i] ?? '-'} / {state.tricksWon[i]}
+          </span>
+        ))}
       </div>
 
-      
-      {isPortrait && (
-        <div style={{ position: 'fixed', bottom: 60, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#ffd700', textAlign: 'center', padding: '0.5rem', zIndex: 50, fontSize: '0.85rem' }}>
-          {t('portraitPrompt')}
-        </div>
-      )}
       {trickMessage && (
-        <div style={{ textAlign: 'center', padding: '0.3rem', background: 'rgba(255,215,0,0.2)', fontWeight: 600 }}>{trickMessage}</div>
+        <div style={{ textAlign: 'center', padding: '0.25rem', background: 'rgba(255,215,0,0.25)', fontWeight: 600, fontSize: '0.85rem' }}>{trickMessage}</div>
       )}
 
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-        <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 2 }}>
+      {/* Shuffling / dealing animation overlay */}
+      {dealing && !showRefreshConfirm && !showProfileSetup && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, background: 'rgba(0,0,0,0.25)', pointerEvents: 'none' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.3rem', marginBottom: 12, animation: 'pulse 1s infinite' }}>Shuffling & Dealing...</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              {[0,1,2,3].map(i => (
+                <div key={i} style={{ width: 40, height: 56, background: 'linear-gradient(135deg,#1a4d1a,#0d2e0d)', borderRadius: 6, animation: `deal 0.6s ${i*0.15}s both`, border: '1px solid #333' }} />
+              ))}
+            </div>
+          </div>
+          <style>{`
+            @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+            @keyframes deal { from{transform:translateY(-80px) rotate(-20deg);opacity:0} to{transform:translateY(0);opacity:1} }
+          `}</style>
+        </div>
+      )}
+
+      <div ref={tableRef} style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', zIndex: 2 }}>
           <CardFan count={state.hands[1]?.length ?? 13} />
-          <div style={{ marginTop: 2, background: 'rgba(0,0,0,0.45)', borderRadius: 8, padding: '2px 10px', display: 'inline-block', fontSize: '0.8rem' }}>
-            {MASCOTS[1]} <b>{PLAYER_NAMES[1]}</b> • Bid {state.bids[1] ?? '-'} • {state.tricksWon[1]}
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '2px 8px', fontSize: '0.75rem' }}>
+            {MASCOTS[1]} {PLAYER_NAMES[1]} • {state.bids[1] ?? '-'} / {state.tricksWon[1]}
           </div>
         </div>
-
-        <div style={{ position: 'absolute', left: 4, top: '38%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
+        <div style={{ position: 'absolute', left: 6, top: '40%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
           <CardFan count={state.hands[3]?.length ?? 13} vertical />
-          <div style={{ marginTop: 2, background: 'rgba(0,0,0,0.45)', borderRadius: 8, padding: '2px 8px', fontSize: '0.75rem' }}>
-            {MASCOTS[3]} <b>{PLAYER_NAMES[3]}</b><br/>Bid {state.bids[3] ?? '-'} • {state.tricksWon[3]}
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '2px 6px', fontSize: '0.7rem' }}>
+            {MASCOTS[3]} {PLAYER_NAMES[3]}<br/>{state.bids[3] ?? '-'} / {state.tricksWon[3]}
           </div>
         </div>
-
-        <div style={{ position: 'absolute', right: 4, top: '38%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
+        <div style={{ position: 'absolute', right: 6, top: '40%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
           <CardFan count={state.hands[2]?.length ?? 13} vertical />
-          <div style={{ marginTop: 2, background: 'rgba(0,0,0,0.45)', borderRadius: 8, padding: '2px 8px', fontSize: '0.75rem' }}>
-            {MASCOTS[2]} <b>{PLAYER_NAMES[2]}</b><br/>Bid {state.bids[2] ?? '-'} • {state.tricksWon[2]}
+          <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.5)', borderRadius: 8, padding: '2px 6px', fontSize: '0.7rem' }}>
+            {MASCOTS[2]} {PLAYER_NAMES[2]}<br/>{state.bids[2] ?? '-'} / {state.tricksWon[2]}
           </div>
         </div>
 
-        <div style={{ position: 'absolute', top: '44%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1.25rem', alignItems: 'center', minHeight: 160 }}>
-          {dealing && !showRefreshConfirm && !showProfileSetup && <div style={{ opacity: 0.7, fontSize: '1.15rem' }}>Dealing from all sides...</div>}
-          {!dealing && state.currentTrick.length === 0 && !showRefreshConfirm && !showProfileSetup && <div style={{ opacity: 0.45 }}>Waiting for lead</div>}
+        <div style={{ position: 'absolute', top: '46%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', gap: '1rem', alignItems: 'center', minHeight: 140, zIndex: 3 }}>
+          {!dealing && state.currentTrick.length === 0 && !showRefreshConfirm && !showProfileSetup && <div style={{ opacity: 0.5 }}>Waiting for lead</div>}
           {state.currentTrick.map((p, i) => (
-            <div key={i} style={{ textAlign: 'center', transition: 'transform 0.3s' }}>
-              <PlayingCard card={p.card} />
-              <div style={{ fontSize: '0.7rem', marginTop: 2 }}>{MASCOTS[p.player]} {PLAYER_NAMES[p.player]}</div>
+            <div key={i} style={{ textAlign: 'center' }}>
+              <PlayingCard card={p.card} size="sm" />
+              <div style={{ fontSize: '0.65rem', marginTop: 2 }}>{MASCOTS[p.player]}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ paddingBottom: 8, background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent)', zIndex: 5 }}>
-        
-        <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <button onClick={() => {
-            // Re-sort is already done in engine; this is a visual refresh trigger
-            setState(s => ({...s}));
-          }} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}>
-            {t('autoSort')}
-          </button>
-        </div>
-        <div style={{ position: 'relative', height: 230, display: 'flex', justifyContent: 'center' }}>
+      {/* Player hand - cards leave place while dragging */}
+      <div style={{ paddingBottom: 10, background: 'linear-gradient(to top, rgba(0,0,0,0.55), transparent)', zIndex: 5 }}>
+        <div style={{ position: 'relative', height: 200, display: 'flex', justifyContent: 'center' }}>
           {playerHand.map((card, idx) => {
             const isLegal = legalMoves.some(c => c.id === card.id);
-            const sel = selectedCard?.id === card.id;
             const mid = (playerHand.length - 1) / 2;
             const off = idx - mid;
             return (
               <div
                 key={card.id}
-                draggable={playMode === 'drag' && isLegal}
-                onDragStart={() => handleDragStart(card)}
-                style={{ position: 'absolute', left: '50%', bottom: sel ? 32 : 0, transform: `translateX(calc(-50% + ${off * 54}px)) rotate(${off * 1}deg)`, zIndex: sel ? 30 : idx, transition: 'all 0.15s', cursor: isLegal ? 'pointer' : 'default' }}
-                onClick={() => handleCardClick(card)}
-                onDoubleClick={() => handleDoubleClick(card)}
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  bottom: 0,
+                  transform: `translateX(calc(-50% + ${off * 48}px)) rotate(${off * 0.8}deg)`,
+                  zIndex: idx,
+                  cursor: isLegal ? 'grab' : 'default',
+                  opacity: isLegal ? 1 : 0.45,
+                  transition: 'transform 0.15s',
+                }}
+                onPointerDown={(e) => isLegal && onPointerDown(e, card)}
               >
-                <PlayingCard card={card} selected={sel} className={!isLegal && state.phase === 'playing' ? 'opacity-40' : ''} />
+                <PlayingCard card={card} size="sm" />
               </div>
             );
           })}
         </div>
-
-        <div style={{ textAlign: 'center', minHeight: 46, marginTop: 2 }}>
+        <div style={{ textAlign: 'center', minHeight: 40, fontSize: '0.85rem' }}>
           {state.phase === 'bidding' && state.currentBidder === 0 && !showRefreshConfirm && !showProfileSetup && (
             <div>
-              <div style={{ marginBottom: 4, fontWeight: 600, fontSize: '0.9rem' }}>{t('yourBid')}</div>
+              <div style={{ marginBottom: 4, fontWeight: 600 }}>{t('yourBid')}</div>
               <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 32, padding: '0.3rem 0.45rem' }}>{b}</button>)}
+                {Array.from({ length: 9 }, (_, i) => i + 1).map(b => (
+                  <button key={b} onClick={() => handleBid(b)} className="primary" style={{ minWidth: 36, padding: '0.3rem 0.5rem' }}>{b}</button>
+                ))}
               </div>
             </div>
           )}
-          {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'click' && !showRefreshConfirm && (
-            <button onClick={() => selectedCard && doPlay(selectedCard)} disabled={!selectedCard} className="primary">{t('playCard')}</button>
+          {state.phase === 'playing' && state.currentPlayer === 0 && !showRefreshConfirm && (
+            <div style={{ opacity: 0.8 }}>Drag a card to the center to play</div>
           )}
-          {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'dblclick' && <div style={{ opacity: 0.7 }}>{t('doubleClick')}</div>}
-          {state.phase === 'playing' && state.currentPlayer === 0 && playMode === 'drag' && <div style={{ opacity: 0.7 }}>{t('dragToCenter')}</div>}
-          {state.phase === 'playing' && state.currentPlayer !== 0 && !showRefreshConfirm && <div style={{ opacity: 0.65 }}>{MASCOTS[state.currentPlayer]} {PLAYER_NAMES[state.currentPlayer]} {t('thinking')}</div>}
+          {state.phase === 'playing' && state.currentPlayer !== 0 && !showRefreshConfirm && (
+            <div style={{ opacity: 0.65 }}>{MASCOTS[state.currentPlayer]} {PLAYER_NAMES[state.currentPlayer]} {t('thinking')}</div>
+          )}
         </div>
       </div>
 
+      {/* Floating dragged card */}
+      {dragCard && (
+        <div
+          style={{
+            position: 'fixed',
+            left: dragPos.x - dragOffset.x,
+            top: dragPos.y - dragOffset.y,
+            pointerEvents: 'none',
+            zIndex: 1000,
+            transform: 'scale(1.05)',
+            filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.4))',
+          }}
+        >
+          <PlayingCard card={dragCard} size="sm" />
+        </div>
+      )}
+
+      {/* Scoreboard modal - full history */}
+      {showScoreboard && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }} onClick={() => setShowScoreboard(false)}>
+          <div className="card" style={{ maxWidth: 520, width: '90%', maxHeight: '80vh', overflow: 'auto', background: '#1a1a1a', color: '#fff' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Scoreboard</h3>
+            {state.roundHistory.length === 0 ? (
+              <p>No completed rounds yet.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #444' }}>
+                    <th style={{ textAlign: 'left', padding: '4px' }}>Round</th>
+                    {PLAYER_NAMES.map((n, i) => <th key={i} style={{ padding: '4px' }}>{MASCOTS[i]} {n}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.roundHistory.map(r => (
+                    <tr key={r.round} style={{ borderBottom: '1px solid #333' }}>
+                      <td style={{ padding: '4px' }}>{r.round}</td>
+                      {r.roundScores.map((s, i) => (
+                        <td key={i} style={{ padding: '4px', textAlign: 'center' }}>
+                          {r.bids[i]}/{r.tricksWon[i]} → {s > 0 ? '+' : ''}{s.toFixed(1)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr style={{ fontWeight: 700, borderTop: '2px solid #555' }}>
+                    <td style={{ padding: '6px 4px' }}>Total</td>
+                    {state.scores.map((s, i) => <td key={i} style={{ padding: '6px 4px', textAlign: 'center' }}>{s.toFixed(1)}</td>)}
+                  </tr>
+                </tbody>
+              </table>
+            )}
+            <button onClick={() => setShowScoreboard(false)} className="primary" style={{ marginTop: 12 }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {showResult && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
           <div className="card" style={{ maxWidth: 440, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
-            <h2>{t('roundComplete')}</h2>
+            <h2>Round {state.round} Complete</h2>
             <div style={{ margin: '0.8rem 0', fontSize: '0.9rem' }}>
-              {sortedScores.map(({ s, i }, rank) => (
-                <div key={i} style={{ margin: '0.3rem 0', fontWeight: rank === 0 ? 700 : 400 }}>
-                  {rank === 0 ? '🏆 ' : ''}{MASCOTS[i]} {PLAYER_NAMES[i]}: Bid {state.bids[i]} • Tricks {state.tricksWon[i]} • Total {s.toFixed(1)}
-                  {rank === 0 && settings.winningAmount > 0 ? ` • Wins ${settings.winningAmount}` : ''}
+              {state.roundHistory[state.roundHistory.length - 1]?.roundScores.map((s, i) => (
+                <div key={i} style={{ margin: '0.25rem 0' }}>
+                  {MASCOTS[i]} {PLAYER_NAMES[i]}: Bid {state.bids[i]} • Tricks {state.tricksWon[i]} • Round {s.toFixed(1)} • Total {state.scores[i].toFixed(1)}
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: '0.85rem', opacity: 0.8 }}>Prize for 1st after {settings.roundsToPlay} rounds: {settings.winningAmount}</p>
             <button onClick={startNewGame} className="primary">Next Round / Play Again</button>
             <button onClick={() => navigate('/')} style={{ marginLeft: 10, background: 'rgba(255,255,255,0.1)', color: '#fff' }}>Home</button>
           </div>
@@ -375,10 +428,10 @@ export function PlayCallBreak() {
       {showRefreshConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
           <div className="card" style={{ maxWidth: 380, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
-            <h2>{t('gameInProgress')}</h2>
-            <p>Do you want to start a new game?</p>
-            <button onClick={startNewGame} className="primary">{t('startNew')}</button>
-            <button onClick={continueGame} style={{ marginLeft: 10 }}>{t('continue')}</button>
+            <h2>Game in Progress</h2>
+            <p>Continue or start fresh?</p>
+            <button onClick={startNewGame} className="primary">New Game</button>
+            <button onClick={continueGame} style={{ marginLeft: 10 }}>Continue</button>
           </div>
         </div>
       )}
@@ -387,7 +440,6 @@ export function PlayCallBreak() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400 }}>
           <div className="card" style={{ maxWidth: 360, textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
             <h2>Set Your Profile</h2>
-            <p>What should we call you?</p>
             <input value={tempName} onChange={e => setTempName(e.target.value)} placeholder="Your name" style={{ padding: '0.6rem', borderRadius: 8, width: '80%', margin: '0.5rem 0', background: '#333', color: '#fff', border: '1px solid #555' }} />
             <br />
             <button onClick={saveProfileAndStart} className="primary" style={{ marginTop: 8 }}>Start Game</button>
@@ -397,13 +449,12 @@ export function PlayCallBreak() {
 
       {showMenu && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250 }} onClick={() => setShowMenu(false)}>
-          <div className="card" style={{ maxWidth: 320, background: '#1a1a1a', color: '#fff' }} onClick={e => e.stopPropagation()}>
-            <h3>{t('menu')}</h3>
-            <button onClick={() => { setShowLastTrick(true); setShowMenu(false); }} style={{ display: 'block', width: '100%', marginBottom: 8 }}>{t('showLastTrick')}</button>
-            <button onClick={startNewGame} style={{ display: 'block', width: '100%', marginBottom: 8 }}>{t('newGame')}</button>
-            <button onClick={() => navigate('/how-to-play')} style={{ display: 'block', width: '100%', marginBottom: 8 }}>{t('howToPlay')}</button>
-            <button onClick={() => navigate('/settings')} style={{ display: 'block', width: '100%', marginBottom: 8 }}>{t('settings')}</button>
-            <button onClick={() => setShowMenu(false)} style={{ display: 'block', width: '100%' }}>{t('close')}</button>
+          <div className="card" style={{ maxWidth: 300, background: '#1a1a1a', color: '#fff' }} onClick={e => e.stopPropagation()}>
+            <h3>Menu</h3>
+            <button onClick={() => { setShowLastTrick(true); setShowMenu(false); }} style={{ display: 'block', width: '100%', marginBottom: 8 }}>Show Last Trick</button>
+            <button onClick={startNewGame} style={{ display: 'block', width: '100%', marginBottom: 8 }}>New Game</button>
+            <button onClick={() => navigate('/settings')} style={{ display: 'block', width: '100%', marginBottom: 8 }}>Settings</button>
+            <button onClick={() => setShowMenu(false)} style={{ display: 'block', width: '100%' }}>Close</button>
           </div>
         </div>
       )}
@@ -411,15 +462,14 @@ export function PlayCallBreak() {
       {showLastTrick && lastTrick && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 260 }}>
           <div className="card" style={{ textAlign: 'center', background: '#1a1a1a', color: '#fff' }}>
-            <h3>Last Trick — Won by {PLAYER_NAMES[lastTrick.winner]}</h3>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', margin: '1rem 0' }}>
-              {lastTrick.cards.map((c, i) => <PlayingCard key={i} card={c} />)}
+            <h3>Last Trick — {PLAYER_NAMES[lastTrick.winner]}</h3>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '1rem 0' }}>
+              {lastTrick.cards.map((c, i) => <PlayingCard key={i} card={c} size="sm" />)}
             </div>
-            <button onClick={() => setShowLastTrick(false)} className="primary">{t('close')}</button>
+            <button onClick={() => setShowLastTrick(false)} className="primary">Close</button>
           </div>
         </div>
       )}
     </div>
   );
 }
-
